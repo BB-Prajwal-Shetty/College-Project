@@ -1,0 +1,176 @@
+<?php
+session_start();
+$page_title = "Admin Login";
+$nav_path = "../";
+$css_path = "../assets/css/";
+$js_path = "../assets/js/";
+
+include '../includes/db.php';
+
+// Redirect if already logged in
+if (isset($_SESSION['admin_id'])) {
+    header("Location: dashboard.php");
+    exit();
+}
+
+$errors = [];
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $username = sanitize_input($_POST['username']);
+    $password = $_POST['password'];
+    $remember_me = isset($_POST['remember_me']);
+    
+    // Validation
+    if (empty($username)) {
+        $errors[] = "Username is required";
+    }
+    
+    if (empty($password)) {
+        $errors[] = "Password is required";
+    }
+    
+    // Check credentials
+    if (empty($errors)) {
+        $query = "SELECT admin_id, username, email, role, password, status FROM admin 
+                  WHERE username = ? AND status = 'Active'";
+        $stmt = mysqli_prepare($conn, $query);
+        mysqli_stmt_bind_param($stmt, "s", $username);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        if ($admin = mysqli_fetch_assoc($result)) {
+            if (password_verify($password, $admin['password'])) {
+                // Login successful
+                $_SESSION['admin_id'] = $admin['admin_id'];
+                $_SESSION['admin_username'] = $admin['username'];
+                $_SESSION['admin_email'] = $admin['email'];
+                $_SESSION['admin_role'] = $admin['role'];
+                
+                // Update last login
+                $update_query = "UPDATE admin SET last_login = NOW() WHERE admin_id = ?";
+                $update_stmt = mysqli_prepare($conn, $update_query);
+                mysqli_stmt_bind_param($update_stmt, "i", $admin['admin_id']);
+                mysqli_stmt_execute($update_stmt);
+                
+                // Set remember me cookie if checked
+                if ($remember_me) {
+                    $cookie_value = base64_encode($admin['admin_id'] . ':' . $admin['username']);
+                    setcookie('remember_admin', $cookie_value, time() + (30 * 24 * 60 * 60), '/'); // 30 days
+                }
+                
+                $_SESSION['success_message'] = "Welcome back, " . $admin['username'] . "!";
+                header("Location: dashboard.php");
+                exit();
+            } else {
+                $errors[] = "Invalid password";
+            }
+        } else {
+            $errors[] = "Admin not found or account is inactive";
+        }
+    }
+}
+
+include '../includes/header.php';
+?>
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-5 col-md-7">
+            <div class="card shadow-lg border-0">
+                <div class="card-header bg-dark text-white text-center py-4">
+                    <h3 class="mb-0"><i class="fas fa-user-shield me-2"></i>Admin Login</h3>
+                    <p class="mb-0 opacity-75">Access LEASYT Admin Panel</p>
+                </div>
+                
+                <div class="card-body p-5">
+                    <?php if (!empty($errors)): ?>
+                        <div class="alert alert-danger">
+                            <ul class="mb-0">
+                                <?php foreach ($errors as $error): ?>
+                                    <li><?php echo htmlspecialchars($error); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <form method="POST" class="needs-validation" novalidate>
+                        <div class="mb-4">
+                            <label for="username" class="form-label">Admin Username</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-user-shield"></i></span>
+                                <input type="text" class="form-control" id="username" name="username" 
+                                       value="<?php echo htmlspecialchars($_POST['username'] ?? ''); ?>" 
+                                       placeholder="Enter admin username" required>
+                                <div class="invalid-feedback">Please provide your admin username.</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label for="password" class="form-label">Password</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                                <input type="password" class="form-control" id="password" name="password" 
+                                       placeholder="Enter your password" required>
+                                <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <div class="invalid-feedback">Please provide your password.</div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="remember_me" name="remember_me">
+                                <label class="form-check-label" for="remember_me">
+                                    Remember me
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid mb-4">
+                            <button type="submit" class="btn btn-dark btn-lg">
+                                <i class="fas fa-sign-in-alt me-2"></i>Login to Admin Panel
+                            </button>
+                        </div>
+                    </form>
+                    
+                    <div class="text-center">
+                        <a href="../index.php" class="text-muted text-decoration-none">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Main Site
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Demo Credentials -->
+            <div class="card mt-4 border-warning">
+                <div class="card-header bg-warning text-dark">
+                    <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Demo Admin Credentials</h6>
+                </div>
+                <div class="card-body">
+                    <p class="small mb-2"><strong>Username:</strong> admin</p>
+                    <p class="small mb-0"><strong>Password:</strong> password</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('togglePassword').addEventListener('click', function() {
+    const passwordInput = document.getElementById('password');
+    const icon = this.querySelector('i');
+    
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+    } else {
+        passwordInput.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+    }
+});
+</script>
+
+<?php include '../includes/footer.php'; ?>
